@@ -1,0 +1,15 @@
+[Unit]
+Description=Command Center (panel zasobów i launcher)
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+WorkingDirectory=%h/projects/command_center
+ExecStart=%h/projects/command_center/.venv/bin/command-center
+Restart=on-failure
+RestartSec=3
+# Restart lub zatrzymanie panelu nie może zabić usług uruchomionych z kafelków (llama-server, Strata, aplikacje)
+KillMode=process
+
+[Install]
+WantedBy=graphical-session.target

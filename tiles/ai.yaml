@@ -1,0 +1,159 @@
+id: llm
+title: LLM (llama-server)
+type: service
+group: AI
+help: |
+  Qwen3.6-35B-A3B przez llama.cpp 1.0.0, port 8081. Eksperci MoE w RAM, cache najczęściej używanych w VRAM.
+  Start przełącza RAG na CPU i zatrzymuje kokoro-tts; Stop przywraca oba. Zajmuje ok. 11,4 GB VRAM.
+shell_init: source ~/llm/llm-aliases.sh
+start: llm-start {model} {args}
+stop: llm-stop
+pidfile: ~/llm/run/server.pid
+log: ~/llm/run/server.log
+url: http://127.0.0.1:8081
+options:
+  - id: model
+    label: Model
+    type: enum
+    values: {community: Qwen3.6 community, uncensored: Qwen3.6 uncensored (HauhauCS)}
+    default: community
+    help: Krótka nazwa modelu z llm-aliases.sh.
+  - id: cache
+    flag: -M
+    label: Cache ekspertów w VRAM (MiB)
+    type: int
+    default: 8384
+    range: [0, 10240]
+    help: Mniej = więcej wolnego VRAM (np. dla RAG i kokoro), ale niższe tok/s.
+  - id: ctx
+    flag: -c
+    label: Kontekst (tokeny)
+    type: int
+    default: 65536
+    help: Rozmiar kontekstu; wpływa na VRAM przez KV cache.
+  - id: no_vision
+    flag: -V
+    label: Bez wizji
+    type: bool
+    default: false
+    help: Nie ładuj mmproj (projektor i tak siedzi na CPU).
+  - id: keep_kokoro
+    flag: -k
+    label: Nie zatrzymuj kokoro-tts
+    type: bool
+    default: false
+    help: Domyślnie kokoro jest zatrzymywane, żeby zwolnić ok. 2 GB VRAM.
+  - id: legacy
+    flag: -o
+    label: Stary układ
+    type: bool
+    default: false
+    help: 22 warstwy ekspertów na CPU, bez cache (ok. 29,5 tok/s).
+  - id: share
+    flag: -s
+    label: Udział missów na CPU (0..1)
+    type: str
+    default: ""
+    advanced: true
+    help: Domyślnie 0; tuner pokazał, że niewiele daje.
+  - id: ncmoe
+    flag: -n
+    label: Eksperci z N pierwszych warstw na CPU
+    type: str
+    default: ""
+    advanced: true
+    help: Zamiast -cmoe, np. 22 razem z cache 0 daje stary układ.
+  - id: extra
+    flag: -x
+    label: Dodatkowe flagi llama-server
+    type: str
+    default: ""
+    advanced: true
+    help: Dzielone po spacjach, np. -t 6.
+presets:
+  domyślny: {}
+  mniej VRAM (cache 6000, ctx 32k): {cache: 6000, ctx: 32768}
+  stary układ: {legacy: true}
+  uncensored: {model: uncensored}
+vram: {budget_mib: 11400, priority: 80}
+---
+id: strata
+title: Strata (Qwen3.8-Flash-Next 125B)
+type: service
+group: AI
+help: |
+  Osobny silnik Strata, port 8090, API OpenAI pod http://127.0.0.1:8090/v1. Ładowanie 1-1,5 min, ok. 9,4 tok/s.
+  Start robi to samo co llm-start: RAG na CPU i stop kokoro-tts. Stop zwalnia VRAM i woła llm-stop (RAG auto, kokoro z powrotem).
+  VRAM zmienia się tylko przez restart z innymi opcjami: mniejszy kontekst, --kv q4_0, --mtp off.
+shell_init: source ~/llm/llm-aliases.sh
+start: |
+  _llm_rag_gpu cpu
+  if docker ps --format '{{.Names}}' | grep -qx kokoro-tts; then
+    docker stop kokoro-tts >/dev/null && touch "$LLM_RUN/kokoro_was_running"
+  fi
+  cd ~/llm/strata/src && export STRATA_HOME=$HOME/llm/strata/home
+  [ {boundary} = 1 ] && export STRATA_CACHE_MESSAGE_BOUNDARY=1
+  nohup python3 strata.py launch --family qwen --model iq3_s --model-path $HOME/llm/strata/models --data-dir $HOME/llm/strata/data --context {context} --kv {kv} --mtp {mtp} --vision {vision} --access local --port {port} --no-tui --yes > $HOME/llm/strata/run/launch.log 2>&1 &
+  echo "Strata startuje na porcie {port}; log: ~/llm/strata/run/launch.log"
+stop: |
+  cd ~/llm/strata/src && export STRATA_HOME=$HOME/llm/strata/home
+  python3 strata.py launch --stop
+  llm-stop
+match: strata/components/engine
+log: ~/llm/strata/run/launch.log
+url: http://127.0.0.1:8090/v1/models
+options:
+  - id: context
+    label: Kontekst
+    type: enum
+    values: {32k: 32k, 64k: 64k, 128k: 128k, 256k: 256k}
+    default: 64k
+    help: --context. Mniejszy kontekst = mniej pamięci.
+  - id: kv
+    label: Format pamięci rozmowy
+    type: enum
+    values: {int8: int8 (domyślny), q4_0: q4_0 (połowa pamięci), k8v4: k8v4, fp16: fp16}
+    default: int8
+    help: --kv.
+  - id: mtp
+    label: Warstwa draft (MTP)
+    type: enum
+    values: {"on": włączona, "off": wyłączona}
+    default: "on"
+    help: --mtp. Wyłączenie daje ok. 1 GB VRAM mniej i mniej RAM, ale wolniejsze odpowiedzi.
+  - id: vision
+    label: Wizja
+    type: enum
+    values: {"off": wyłączona, "on": auto, cpu: czytnik na CPU, gpu: czytnik na GPU}
+    default: "off"
+    help: --vision. Wyłączona pomija czytnik obrazów (mniej RAM).
+  - id: port
+    label: Port
+    type: int
+    default: 8090
+    help: --port.
+  - id: boundary
+    label: Cache na granicy wiadomości
+    type: bool
+    default: true
+    help: STRATA_CACHE_MESSAGE_BOUNDARY=1; nie jest zapisane w presecie Straty.
+presets:
+  domyślny (64k): {}
+  mniej VRAM (32k, q4_0, bez MTP): {context: 32k, kv: q4_0, mtp: "off"}
+vram: {budget_mib: 11400, priority: 70}
+---
+id: dsh
+title: DeepSeek Harness (web)
+type: service
+group: AI
+help: |
+  Uruchamia DSH przez npx bez klonowania repo. Jako backend podaj Base URL http://127.0.0.1:8090/v1 (Strata)
+  albo http://127.0.0.1:8081/v1 (llama-server), klucz pusty.
+start: npx -y @deepseek-ai/dsh@{version} web
+match: deepseek-ai/dsh
+options:
+  - id: version
+    label: Wersja pakietu
+    type: str
+    default: alpha
+    help: Tag lub numer wersji, np. alpha (zmienia się z wydaniami) albo konkretna stała wersja.

@@ -1,0 +1,39 @@
+id: imgnote
+title: ImgNote
+type: app
+group: Aplikacje
+help: ~/projects/ImgnoteV3 (uv run main.py)
+shell_init: source ~/.bash_aliases
+start: imgnote
+---
+id: koko-tts
+title: Koko TTS (aplikacja)
+type: app
+group: Aplikacje
+help: ~/projects/KokoroTTS (uv run main.py)
+shell_init: source ~/.bash_aliases
+start: koko-tts
+---
+id: fiction-writer
+title: Fiction Writer
+type: app
+group: Aplikacje
+help: ~/projects/Fiction_Writer2 (uv run main.py)
+shell_init: source ~/.bash_aliases
+start: fiction-writer
+---
+id: doc-search
+title: DocSearch
+type: app
+group: Aplikacje
+help: ~/projects/DocSearch (uv run app.py)
+shell_init: source ~/.bash_aliases
+start: doc-search
+---
+id: llm-status
+title: llm-status
+type: command
+group: Narzędzia
+help: Czy llama-server działa, PID, port, VRAM, stan kokoro-tts. Wynik zobaczysz w Opcjach.
+shell_init: source ~/llm/llm-aliases.sh
+start: llm-status

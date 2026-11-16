@@ -1,0 +1,30 @@
+id: kokoro-tts
+title: Kokoro TTS (kontener)
+type: container
+group: Kontenery
+help: Kokoro-FastAPI na GPU, ok. 2 GB VRAM. llm-start i Strata zatrzymują go automatycznie.
+container: kokoro-tts
+vram: {budget_mib: 2000, priority: 30}
+---
+id: rag
+title: RAG (stos)
+type: stack
+group: Kontenery
+help: Stos ~/projects/rag_pipeline, port 8100 (/health, /search, /debug/gpu). Modele wyszukiwania idą na GPU, gdy jest wolny VRAM.
+compose_project: rag_pipeline
+url: http://127.0.0.1:8100/health
+vram: {priority: 40}
+---
+id: open-webui
+title: Open WebUI
+type: container
+group: Kontenery
+help: Frontend czatu do llama-server (kontener CPU).
+container: open-webui
+---
+id: honcho
+title: Honcho (stos)
+type: stack
+group: Kontenery
+help: Pamięć dla Hermesa (database, redis, api, deriver).
+compose_project: honcho
