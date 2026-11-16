@@ -2,7 +2,7 @@ id: kokoro-tts
 title: Kokoro TTS (kontener)
 type: container
 group: Kontenery
-help: Kokoro-FastAPI na GPU, ok. 2 GB VRAM. llm-start i Strata zatrzymują go automatycznie.
+help: Kokoro-FastAPI na GPU, ok. 1-2 GB VRAM. LLM i Strata odsuwają go przy starcie (arbiter), Stop przywraca.
 container: kokoro-tts
 vram: {budget_mib: 2000, priority: 30}
 ---
@@ -10,10 +10,16 @@ id: rag
 title: RAG (stos)
 type: stack
 group: Kontenery
-help: Stos ~/projects/rag_pipeline, port 8100 (/health, /search, /debug/gpu). Modele wyszukiwania idą na GPU, gdy jest wolny VRAM.
+help: |
+  Stos ~/projects/rag_pipeline, port 8100 (/health, /search, /debug/gpu). Modele wyszukiwania idą na GPU, gdy jest wolny VRAM.
+  Ustępuje bez zatrzymywania: arbiter przełącza go na CPU, a potem z powrotem na auto.
 compose_project: rag_pipeline
 url: http://127.0.0.1:8100/health
-vram: {priority: 40}
+health: http://127.0.0.1:8100/health
+vram:
+  priority: 40
+  yield: {http_post: "http://127.0.0.1:8100/debug/gpu", json: {mode: cpu}}
+  resume: {http_post: "http://127.0.0.1:8100/debug/gpu", json: {mode: auto}}
 ---
 id: open-webui
 title: Open WebUI

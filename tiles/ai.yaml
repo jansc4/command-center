@@ -4,67 +4,103 @@ type: service
 group: AI
 help: |
   Qwen3.6-35B-A3B przez llama.cpp 1.0.0, port 8081. Eksperci MoE w RAM, cache najczęściej używanych w VRAM.
-  Start przełącza RAG na CPU i zatrzymuje kokoro-tts; Stop przywraca oba. Zajmuje ok. 11,4 GB VRAM.
+  Panel woła llama-server bezpośrednio (te same argumenty co llm-start); llm-aliases.sh zostaje do pracy w terminalu.
+  Zależności (RAG na CPU, stop kokoro-tts) robi arbiter według on_start; Stop przywraca to, co odsunięto.
 shell_init: source ~/llm/llm-aliases.sh
-start: llm-start {model} {args}
-stop: llm-stop
+start: |
+  pid="$LLM_RUN/server.pid"
+  if [ -f "$pid" ] && kill -0 "$(cat "$pid")" 2>/dev/null; then echo "Serwer już działa (PID $(cat "$pid"))"; exit 1; fi
+  gguf="$(_llm_model {model})"
+  [ -f "$gguf" ] || { echo "Brak pliku: $gguf"; exit 1; }
+  mm=()
+  if [ {vision} = 1 ]; then
+    m="$(ls "$(dirname "$gguf")"/mmproj*.gguf 2>/dev/null | head -n1)"
+    [ -n "$m" ] && mm=(--mmproj "$m" --no-mmproj-offload)
+  fi
+  ncmoe={ncmoe}; cache={cache}; extra={extra}
+  [ {legacy} = 1 ] && { ncmoe=22; cache=0; }
+  if [ -z "$ncmoe" ]; then moe=(-cmoe); else moe=(--n-cpu-moe "$ncmoe"); fi
+  [ "$cache" -gt 0 ] && moe+=(--moe-cache-mib "$cache" --moe-cache-cpu-share {share})
+  read -ra ex <<< "$extra"
+  echo "Start: $(basename "$gguf") | cache $cache MiB | ctx {ctx} | port $LLM_PORT | wizja {vision}"
+  nohup "$LLM_BIN/llama-server" -m "$gguf" "${mm[@]}" -ngl 99 "${moe[@]}" "${ex[@]}" \
+    -c {ctx} -fa on -ctk q8_0 -ctv q8_0 -t 4 -b 2048 -ub 1024 \
+    --jinja --host 127.0.0.1 --port "$LLM_PORT" > "$LLM_RUN/server.log" 2>&1 &
+  echo $! > "$pid"
+  for i in $(seq 1 90); do
+    if curl -s "localhost:$LLM_PORT/health" | grep -q ok; then
+      echo "Gotowe: http://127.0.0.1:$LLM_PORT  (VRAM: $(nvidia-smi --query-gpu=memory.used --format=csv,noheader))"; exit 0
+    fi
+    kill -0 "$(cat "$pid")" 2>/dev/null || { echo "Serwer padł (OOM?). Log:"; tail -5 "$LLM_RUN/server.log" | cut -c1-160; rm -f "$pid"; exit 1; }
+    sleep 2
+  done
+  echo "Timeout; log: $LLM_RUN/server.log"; exit 1
+stop: |
+  pid="$LLM_RUN/server.pid"
+  if [ -f "$pid" ] && kill -0 "$(cat "$pid")" 2>/dev/null; then
+    kill "$(cat "$pid")"
+    while kill -0 "$(cat "$pid")" 2>/dev/null; do sleep 0.5; done
+    echo "Serwer zatrzymany."
+  else
+    echo "Serwer nie działa."
+  fi
+  rm -f "$pid"
 pidfile: ~/llm/run/server.pid
 log: ~/llm/run/server.log
 url: http://127.0.0.1:8081
+health: http://127.0.0.1:8081/health
 options:
   - id: model
     label: Model
     type: enum
     values: {community: Qwen3.6 community, uncensored: Qwen3.6 uncensored (HauhauCS)}
+    custom: true
     default: community
-    help: Krótka nazwa modelu z llm-aliases.sh.
+    help: Krótka nazwa z llm-aliases.sh albo pełna ścieżka do pliku .gguf (wpisz i Enter).
   - id: cache
-    flag: -M
     label: Cache ekspertów w VRAM (MiB)
     type: int
     default: 8384
     range: [0, 10240]
-    help: Mniej = więcej wolnego VRAM (np. dla RAG i kokoro), ale niższe tok/s.
+    help: --moe-cache-mib. Mniej = więcej wolnego VRAM (np. dla RAG i kokoro), ale niższe tok/s.
   - id: ctx
-    flag: -c
     label: Kontekst (tokeny)
     type: int
     default: 65536
-    help: Rozmiar kontekstu; wpływa na VRAM przez KV cache.
-  - id: no_vision
-    flag: -V
-    label: Bez wizji
+    help: -c. Wpływa na VRAM przez KV cache (q8_0).
+  - id: vision
+    label: Wizja (mmproj na CPU)
     type: bool
-    default: false
-    help: Nie ładuj mmproj (projektor i tak siedzi na CPU).
+    default: true
+    help: Ładuje mmproj-*.gguf z folderu modelu; projektor siedzi na CPU.
+  - id: rag_cpu
+    label: Przełącz RAG na CPU
+    type: bool
+    default: true
+    help: Arbiter wyśle do RAG /debug/gpu {"mode":"cpu"}; po Stop wróci "auto".
   - id: keep_kokoro
-    flag: -k
     label: Nie zatrzymuj kokoro-tts
     type: bool
     default: false
-    help: Domyślnie kokoro jest zatrzymywane, żeby zwolnić ok. 2 GB VRAM.
+    help: Domyślnie kokoro jest zatrzymywane (zwalnia VRAM) i wraca po Stop.
   - id: legacy
-    flag: -o
     label: Stary układ
     type: bool
     default: false
     help: 22 warstwy ekspertów na CPU, bez cache (ok. 29,5 tok/s).
   - id: share
-    flag: -s
     label: Udział missów na CPU (0..1)
     type: str
-    default: ""
+    default: "0"
     advanced: true
-    help: Domyślnie 0; tuner pokazał, że niewiele daje.
+    help: --moe-cache-cpu-share; tuner pokazał, że niewiele daje.
   - id: ncmoe
-    flag: -n
     label: Eksperci z N pierwszych warstw na CPU
     type: str
     default: ""
     advanced: true
-    help: Zamiast -cmoe, np. 22 razem z cache 0 daje stary układ.
+    help: --n-cpu-moe N zamiast -cmoe; np. 22 razem z cache 0 daje stary układ.
   - id: extra
-    flag: -x
     label: Dodatkowe flagi llama-server
     type: str
     default: ""
@@ -72,10 +108,16 @@ options:
     help: Dzielone po spacjach, np. -t 6.
 presets:
   domyślny: {}
-  mniej VRAM (cache 6000, ctx 32k): {cache: 6000, ctx: 32768}
+  mniej VRAM (cache 6000, ctx 32k): {cache: 6000, ctx: 32768, rag_cpu: false, keep_kokoro: true}
   stary układ: {legacy: true}
   uncensored: {model: uncensored}
-vram: {budget_mib: 11400, priority: 80}
+vram:
+  budget_mib: "11400 if legacy else 3016 + cache"
+  priority: 80
+on_start:
+  - {yield: rag, if: rag_cpu}
+  - {yield: kokoro-tts, unless: keep_kokoro}
+on_stop: restore
 ---
 id: strata
 title: Strata (Qwen3.8-Flash-Next 125B)
@@ -83,14 +125,10 @@ type: service
 group: AI
 help: |
   Osobny silnik Strata, port 8090, API OpenAI pod http://127.0.0.1:8090/v1. Ładowanie 1-1,5 min, ok. 9,4 tok/s.
-  Start robi to samo co llm-start: RAG na CPU i stop kokoro-tts. Stop zwalnia VRAM i woła llm-stop (RAG auto, kokoro z powrotem).
+  Arbiter przy starcie przełącza RAG na CPU i zatrzymuje kokoro-tts; Stop przywraca oba.
   VRAM zmienia się tylko przez restart z innymi opcjami: mniejszy kontekst, --kv q4_0, --mtp off.
 shell_init: source ~/llm/llm-aliases.sh
 start: |
-  _llm_rag_gpu cpu
-  if docker ps --format '{{.Names}}' | grep -qx kokoro-tts; then
-    docker stop kokoro-tts >/dev/null && touch "$LLM_RUN/kokoro_was_running"
-  fi
   cd ~/llm/strata/src && export STRATA_HOME=$HOME/llm/strata/home
   [ {boundary} = 1 ] && export STRATA_CACHE_MESSAGE_BOUNDARY=1
   nohup python3 strata.py launch --family qwen --model iq3_s --model-path $HOME/llm/strata/models --data-dir $HOME/llm/strata/data --context {context} --kv {kv} --mtp {mtp} --vision {vision} --access local --port {port} --no-tui --yes > $HOME/llm/strata/run/launch.log 2>&1 &
@@ -98,10 +136,10 @@ start: |
 stop: |
   cd ~/llm/strata/src && export STRATA_HOME=$HOME/llm/strata/home
   python3 strata.py launch --stop
-  llm-stop
 match: strata/components/engine
 log: ~/llm/strata/run/launch.log
 url: http://127.0.0.1:8090/v1/models
+health: http://127.0.0.1:8090/v1/models
 options:
   - id: context
     label: Kontekst
@@ -131,16 +169,22 @@ options:
     label: Port
     type: int
     default: 8090
+    advanced: true
     help: --port.
   - id: boundary
     label: Cache na granicy wiadomości
     type: bool
     default: true
+    advanced: true
     help: STRATA_CACHE_MESSAGE_BOUNDARY=1; nie jest zapisane w presecie Straty.
 presets:
   domyślny (64k): {}
   mniej VRAM (32k, q4_0, bez MTP): {context: 32k, kv: q4_0, mtp: "off"}
 vram: {budget_mib: 11400, priority: 70}
+on_start:
+  - {yield: rag}
+  - {yield: kokoro-tts}
+on_stop: restore
 ---
 id: dsh
 title: DeepSeek Harness (web)

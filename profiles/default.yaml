@@ -1,0 +1,35 @@
+# Profile: przełączenie = plan arbitra dla całej listy (najpierw stop, potem start po kolei).
+# start: [{tile, preset?, values?}]; kafelek, który już działa z innymi opcjami, zostanie zrestartowany.
+id: llm
+title: LLM
+help: llama-server z domyślnymi opcjami (cache 8384, 64k). RAG na CPU, kokoro-tts zatrzymane.
+stop: [strata]
+start:
+  - {tile: llm}
+---
+id: llm-rag
+title: LLM + RAG oszczędny
+help: llama-server z cache 6000 MiB i kontekstem 32k; RAG zostaje na GPU, kokoro-tts działa dalej.
+stop: [strata]
+start:
+  - {tile: rag}
+  - {tile: llm, preset: "mniej VRAM (cache 6000, ctx 32k)"}
+---
+id: strata
+title: Strata
+help: Strata z domyślnymi opcjami (64k). LLM zatrzymany, RAG na CPU, kokoro-tts zatrzymane.
+stop: [llm]
+start:
+  - {tile: strata}
+---
+id: tts
+title: TTS
+help: kokoro-tts na GPU; LLM i Strata zatrzymane, RAG wraca na auto.
+stop: [llm, strata]
+start:
+  - {tile: kokoro-tts}
+---
+id: all-off
+title: Wszystko wyłączone
+help: Zatrzymuje LLM, Stratę i kokoro-tts; RAG wraca do trybu auto. Karta prawie pusta.
+stop: [llm, strata, kokoro-tts]

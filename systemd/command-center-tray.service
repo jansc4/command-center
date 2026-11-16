@@ -1,0 +1,12 @@
+[Unit]
+Description=Command Center: ikona w zasobniku
+After=graphical-session.target command-center.service
+PartOf=graphical-session.target
+
+[Service]
+ExecStart=/usr/bin/python3 %h/projects/command_center/command_center/tray.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

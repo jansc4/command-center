@@ -138,11 +138,18 @@ class Monitor:
     def sample_processes(self) -> list[dict]:
         vram = {p["pid"]: p["mib"] for g in self.snapshot.get("gpus", []) for p in g["procs"]}
         rows = []
-        for p in psutil.process_iter(["pid", "name", "username", "cpu_percent", "memory_info", "cmdline"]):
+        for p in psutil.process_iter(["pid", "ppid", "name", "username", "cpu_percent", "memory_info", "cmdline", "nice"]):
             i = p.info
             mi = i.get("memory_info")
+            try:
+                sid = os.getsid(i["pid"])
+            except OSError:
+                sid = None
             rows.append({
                 "pid": i["pid"],
+                "sid": sid,
+                "ppid": i.get("ppid"),
+                "nice": i.get("nice"),
                 "name": i.get("name") or "",
                 "user": i.get("username") or "",
                 "cpu": round(i.get("cpu_percent") or 0.0, 1),
@@ -162,3 +169,14 @@ class Monitor:
         name = p.name()
         p.send_signal(signal.SIGKILL if force else signal.SIGTERM)
         return f"Wysłano {'SIGKILL' if force else 'SIGTERM'} do {name} (PID {pid})"
+
+    @staticmethod
+    def renice(pid: int, nice: int) -> str:
+        if pid <= 1:
+            raise ValueError("Tego procesu nie ruszam.")
+        if not -20 <= nice <= 19:
+            raise ValueError("nice musi być w zakresie -20..19")
+        p = psutil.Process(pid)
+        old = p.nice()
+        p.nice(nice)
+        return f"{p.name()} (PID {pid}): nice {old} -> {nice}"
