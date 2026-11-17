@@ -138,10 +138,13 @@ restartu demona. Serwer MCP zostaje dostępny tylko lokalnie.
 | `terminal.py`, `editor.py`, `actions.py`, `plugins.py`, `tray.py`, `cli.py` | jak w nazwie |
 
 Zbudowane na [NiceGUI](https://nicegui.io/) i oficjalnym [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk).
-Notatki przekazania i otwarte zadania: [`HANDOFF.md`](HANDOFF.md).
 
 ## Jeszcze niesprawdzone
 
 Prawdziwy start LLM/Straty z kafelków, pomiar VRAM po starcie względem budżetu, menu ikony w codziennym użyciu,
 „W terminalu” i akcje Dockera z GUI, tryb `remote` i `--native`. Arbiter był testowany na atrapach procesów,
 nie na prawdziwych usługach.
+
+## Licencja
+
+[MIT](LICENSE)

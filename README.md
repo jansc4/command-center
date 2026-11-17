@@ -138,10 +138,13 @@ Ready-made entries for Hermes, opencode, Claude Desktop and Claude Code are in t
 | `terminal.py`, `editor.py`, `actions.py`, `plugins.py`, `tray.py`, `cli.py` | as the names say |
 
 Built with [NiceGUI](https://nicegui.io/) and the official [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk).
-Handoff notes and open work: [`HANDOFF.md`](HANDOFF.md) (in Polish).
 
 ## Not yet verified
 
 Real LLM/Strata starts from tiles, VRAM measurement after start vs. budget, the tray menu in daily use,
 "in terminal" and Docker actions from the GUI, `remote` mode and `--native`. The arbiter has been exercised on
 dummy processes, not on the real services.
+
+## License
+
+[MIT](LICENSE)

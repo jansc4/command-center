@@ -27,3 +27,6 @@ uv.lock.bak
 .vscode/
 *.swp
 .DS_Store
+
+# Local working notes
+/HANDOFF.md
